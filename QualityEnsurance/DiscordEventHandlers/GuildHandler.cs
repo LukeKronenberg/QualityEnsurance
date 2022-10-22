@@ -1,7 +1,5 @@
 ﻿using Discord;
 using Discord.WebSocket;
-using QualityEnsurance.Models;
-using QualityEnsurance.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace QualityEnsurance.DiscordEventHandlers
@@ -9,9 +7,9 @@ namespace QualityEnsurance.DiscordEventHandlers
     public class GuildHandler
     {
         private readonly DiscordSocketClient _discord;
-        private readonly IDbContextFactory<ApplicationContext> _contextFactory;
+        private readonly IDbContextFactory<QualityEnsuranceContext> _contextFactory;
 
-        public GuildHandler(DiscordSocketClient discord, IDbContextFactory<ApplicationContext> contextFactory)
+        public GuildHandler(DiscordSocketClient discord, IDbContextFactory<QualityEnsuranceContext> contextFactory)
         {
             _discord = discord;
             _contextFactory = contextFactory;

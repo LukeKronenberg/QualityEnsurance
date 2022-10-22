@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using QualityEnsurance.Attributes;
 using QualityEnsurance.Constants;
 using QualityEnsurance.Extensions;
-using QualityEnsurance.Services;
 using QualityEnsurance.Models;
 using System.Text;
 using QualityEnsurance.DiscordEventHandlers;
@@ -18,10 +17,10 @@ namespace QualityEnsurance.CommandModules
     [RequireUserPermissionOrOwner(GuildPermission.Administrator)]
     public class ActivityModule : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly IDbContextFactory<ApplicationContext> _contextFactory;
+        private readonly IDbContextFactory<QualityEnsuranceContext> _contextFactory;
         private readonly PresenceHandler _presenceHandler;
 
-        public ActivityModule(IDbContextFactory<ApplicationContext> contextFactory, PresenceHandler presenceHandler)
+        public ActivityModule(IDbContextFactory<QualityEnsuranceContext> contextFactory, PresenceHandler presenceHandler)
         {
             _contextFactory = contextFactory;
             _presenceHandler = presenceHandler;
@@ -101,9 +100,9 @@ namespace QualityEnsurance.CommandModules
                                     valueBuilder.Append($"**Spotify-Id**: `{guildActivity.Activity.SpotifyId.SanitizeCode()}`\n");
 
                                 valueBuilder.Append($"**Action**: {guildActivity.Action}\n");
-                                valueBuilder.Append($"**Countdown-Duration**: {guildActivity.CountdownDuration}s\n");
+                                valueBuilder.Append($"**Countdown-Duration**: {guildActivity.CountdownDurationS}s\n");
                                 if (guildActivity.Action == BotActionType.Timeout)
-                                    valueBuilder.Append($"**Timeout duration**: {guildActivity.TimeoutDuration}\n");
+                                    valueBuilder.Append($"**Timeout duration**: {guildActivity.TimeoutDurationS}\n");
                                 valueBuilder.Append($"**Start message**: {guildActivity.StartMessage ?? "No message"}\n");
                                 valueBuilder.Append($"**Action message**: {guildActivity.ActionMessage ?? "No message"}");
 
@@ -215,7 +214,7 @@ namespace QualityEnsurance.CommandModules
 
         [SlashCommand("add", "Add an activity to watch for")]
         public async Task AddActivity(
-            [Summary("name", "Name of the Activity. (Use \"custom status\" to match Custom statuses. \"state\" must be set for this)")]
+            [Summary("name", "Name of the Activity (Case insensitive). (Use \"custom status\" to match Custom statuses)")]
             string name = null,
             [Summary("app-id", "Id of an discord application (Only works when the app developer has registered it).")]
             string appIdAsString = null,
@@ -236,8 +235,8 @@ namespace QualityEnsurance.CommandModules
             string actionMessage = null
             )
         {
-            name = string.IsNullOrWhiteSpace(name) ? null : name;
-            state = string.IsNullOrWhiteSpace(state) ? null : state;
+            name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+            state = string.IsNullOrWhiteSpace(state) ? null : state.Trim();
             if (name?.Length > 100)
             {
                 await RespondAsync("The name can't be longer than 100 caracters!", ephemeral: true);
@@ -277,7 +276,7 @@ namespace QualityEnsurance.CommandModules
 
             using var context = _contextFactory.CreateDbContext();
 
-            var guild = GuildService.GetGuild(context, (long)Context.Guild.Id);
+            var guild = context.GetGuild((long)Context.Guild.Id);
             ulong ownerId = (await Context.Client.GetApplicationInfoAsync()).Owner.Id;
             int gaCount = guild.GuildActivities.Where(ga => ga.UserId != (long)ownerId).Count();
             if (gaCount >= guild.MaxActivities && ownerId != Context.User.Id)
@@ -312,12 +311,12 @@ namespace QualityEnsurance.CommandModules
                 IdWithinGuild = guild.GuildActivityNextId++,
                 Guild = guild,
                 Activity = activity,
-                User = UserService.GetUser(context, (long)Context.User.Id),
+                User = context.GetUser((long)Context.User.Id),
                 Action = actionType,
                 StartMessage = startMessage,
                 ActionMessage = actionMessage,
-                TimeoutDuration = timeoutDuration,
-                CountdownDuration = countdownDuration,
+                TimeoutDurationS = timeoutDuration,
+                CountdownDurationS = countdownDuration,
             };
 
             context.Add(guildActivity);
@@ -360,9 +359,9 @@ namespace QualityEnsurance.CommandModules
             if (actionType.HasValue)
                 guildActivity.Action = actionType.Value;
             if (countdownDuration.HasValue)
-                guildActivity.CountdownDuration = countdownDuration.Value;
+                guildActivity.CountdownDurationS = countdownDuration.Value;
             if (timeoutDuration.HasValue)
-                guildActivity.TimeoutDuration = timeoutDuration.Value;
+                guildActivity.TimeoutDurationS = timeoutDuration.Value;
             if (startMessage != null)
             {
                 if (startMessage.ToLower() == "disable")
@@ -452,10 +451,10 @@ namespace QualityEnsurance.CommandModules
     [RequireUserPermissionOrOwner(GuildPermission.Administrator)]
     public class ActionModule : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly IDbContextFactory<ApplicationContext> _contextFactory;
+        private readonly IDbContextFactory<QualityEnsuranceContext> _contextFactory;
         private readonly PresenceHandler _presenceHandler;
 
-        public ActionModule(IDbContextFactory<ApplicationContext> contextFactory, PresenceHandler presenceHandler)
+        public ActionModule(IDbContextFactory<QualityEnsuranceContext> contextFactory, PresenceHandler presenceHandler)
         {
             _contextFactory = contextFactory;
             _presenceHandler = presenceHandler;

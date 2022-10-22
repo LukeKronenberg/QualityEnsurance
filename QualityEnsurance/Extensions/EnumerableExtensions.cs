@@ -20,10 +20,31 @@ namespace QualityEnsurance.Extensions
                 _ => throw new NotSupportedException($"\"{a.GetType().Name}\" is not supported.")
             });
         public static IOrderedEnumerable<Activity> OrderByName(this IEnumerable<Activity> guildActivities) =>
-            guildActivities
-                .OrderBy(a => a.ApplicationId?.ToString() ?? a.SpotifyId ?? a.Name);
+            guildActivities.OrderBy(a => a.ApplicationId?.ToString() ?? a.SpotifyId ?? a.Name);
         public static IOrderedEnumerable<GuildActivity> OrderByName(this IEnumerable<GuildActivity> guildActivities) =>
-            guildActivities
-                .OrderBy(a => a.Activity.ApplicationId?.ToString() ?? a.Activity.SpotifyId ?? a.Activity.Name );
+            guildActivities.OrderBy(a => a.Activity.ApplicationId?.ToString() ?? a.Activity.SpotifyId ?? a.Activity.Name );
+
+        public static IEnumerable<T[]> Chunk<T>(this IEnumerable<T> source, Func<T, int> sizeConverter, int maxSize)
+        {
+            List<T> lastElements = new();
+            int lastSizesSum = 0;
+            foreach (var element in source)
+            {
+                int len = sizeConverter(element);
+                if (len > maxSize)
+                    throw new ArgumentException("Size of element is greater than maxSize");
+
+                if (lastSizesSum + len > maxSize)
+                {
+                    yield return lastElements.ToArray();
+                    lastElements.Clear();
+                    lastSizesSum = 0;
+                }
+                lastSizesSum += len;
+                lastElements.Add(element);
+            }
+
+            yield return lastElements.ToArray();
+        }
     }
 }

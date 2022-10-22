@@ -7,6 +7,7 @@ namespace QualityEnsurance
         public long UserId;
         public long GuildId;
         public long ActivityId;
+        public int CountdownDurationS;
         public DateTime ETA;
         public CancellationTokenSource ActionTask;
 

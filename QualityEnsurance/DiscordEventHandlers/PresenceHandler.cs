@@ -2,7 +2,6 @@
 using Discord.WebSocket;
 using QualityEnsurance.Constants;
 using QualityEnsurance.Models;
-using QualityEnsurance.Services;
 using QualityEnsurance.Extensions;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,24 +10,20 @@ namespace QualityEnsurance.DiscordEventHandlers
     public class PresenceHandler
     {
         private readonly DiscordSocketClient _discord;
-        private readonly IDbContextFactory<ApplicationContext> _contextFactory;
+        private readonly IDbContextFactory<QualityEnsuranceContext> _contextFactory;
 
         public readonly List<ActionEntry> PendingActions = new();
 
-        public PresenceHandler(DiscordSocketClient discord, IDbContextFactory<ApplicationContext> contextFactory)
+        public PresenceHandler(DiscordSocketClient discord, IDbContextFactory<QualityEnsuranceContext> contextFactory)
         {
             _discord = discord;
-            _contextFactory = contextFactory;
-        }
-
-        public void Initialize()
-        {
             _discord.PresenceUpdated += PresenceUpdated;
+            _contextFactory = contextFactory;
         }
 
         private async Task PresenceUpdated(SocketUser socketUser, SocketPresence oldPresence, SocketPresence newPresence)
         {
-            if (socketUser is not SocketGuildUser user) // We get notified for every individualy (If user1 is in guild1 and guild2 we get to seperate notifications for each guild... handy) 
+            if (socketUser is not SocketGuildUser user) // We get notified for every individualy (If user1 is in guild1 and guild2 we get to seperate notifications for each guild) 
                 return;
             var oldActivities = oldPresence.Activities?.ToArray() ?? Array.Empty<IActivity>();
             var newActivities = newPresence.Activities?.ToArray() ?? Array.Empty<IActivity>();
@@ -53,11 +48,13 @@ namespace QualityEnsurance.DiscordEventHandlers
                 switch (startedActivity)
                 {
                     case RichGame richGame:
-                        guildActivity = guild.GuildActivities.FirstOrDefault(ga =>
-                            (ga.Activity.ApplicationId != null || ga.Activity.Name != null) &&
+                        guildActivity = guild.GuildActivities.FirstOrDefault((ga) =>
+                        {
+                            return (ga.Activity.ApplicationId != null || ga.Activity.Name != null) &&
                                 (ga.Activity.ApplicationId == null || ga.Activity.ApplicationId == (long)richGame.ApplicationId) &&
-                                    (ga.Activity.Name == null || ga.Activity.Name == richGame.Name.ToLower()) &&
-                                        (ga.Activity.State == null || ga.Activity.State == richGame.State?.ToLower()));
+                                (ga.Activity.Name == null || ga.Activity.Name == richGame.Name.ToLower()) &&
+                                (ga.Activity.State == null || ga.Activity.State == richGame.State?.ToLower());
+                        });
                         break;
                     case SpotifyGame spotifyGame:
                         guildActivity = guild.GuildActivities.FirstOrDefault(ga => ga.Activity.SpotifyId != null && ga.Activity.SpotifyId == spotifyGame.TrackId);
@@ -77,7 +74,7 @@ namespace QualityEnsurance.DiscordEventHandlers
                 if (gau.Blacklisted || (guildActivity.RequireWhitelist && !gau.Whitelisted))
                         continue;
 
-                DateTime timeOfAction = DateTime.Now.Add(TimeSpan.FromSeconds(guildActivity.CountdownDuration));
+                DateTime timeOfAction = DateTime.Now.Add(TimeSpan.FromSeconds(guildActivity.CountdownDurationS));
 
                 if (guildActivity.StartMessage != null)
                     await user.SendMessageAsync(guildActivity.StartMessage);
@@ -87,6 +84,7 @@ namespace QualityEnsurance.DiscordEventHandlers
                     UserId = (long)user.Id,
                     GuildId = guild.Id,
                     ActivityId = guildActivity.Activity.Id,
+                    CountdownDurationS = guildActivity.CountdownDurationS,
                     ETA = timeOfAction,
                     ActionTask = new()
                 };
@@ -106,11 +104,14 @@ namespace QualityEnsurance.DiscordEventHandlers
                     switch (stoppedActivity)
                     {
                         case RichGame richGame:
-                            guildActivity = guild.GuildActivities.FirstOrDefault(ga =>
-                                (ga.Activity.ApplicationId != null || ga.Activity.Name != null) &&
+                            guildActivity = guild.GuildActivities.FirstOrDefault((ga) =>
+                            {
+                                return (ga.Activity.ApplicationId != null || ga.Activity.Name != null) &&
                                     (ga.Activity.ApplicationId == null || ga.Activity.ApplicationId == (long)richGame.ApplicationId) &&
-                                        (ga.Activity.Name == null || ga.Activity.Name == richGame.Name.ToLower()) &&
-                                            (ga.Activity.State == null || ga.Activity.State == richGame.State?.ToLower()));
+                                    (ga.Activity.Name == null || ga.Activity.Name == richGame.Name.ToLower()) &&
+                                    (ga.Activity.State == null || ga.Activity.State == richGame.State?.ToLower());
+
+                            });
                             break;
                         case SpotifyGame spotifyGame:
                             guildActivity = guild.GuildActivities.FirstOrDefault(ga => ga.Activity.SpotifyId != null && ga.Activity.SpotifyId == spotifyGame.TrackId);
@@ -145,20 +146,30 @@ namespace QualityEnsurance.DiscordEventHandlers
             try
             {
                 await Task.Delay(actionDelay, entry.ActionTask.Token);
-            } catch (TaskCanceledException) { return; /* canceled */ }
+            } 
+            catch (TaskCanceledException) { return; /* canceled */ }
             catch (Exception ex) { Console.WriteLine(ex); return; }
 
             using var context = _contextFactory.CreateDbContext();
 
             GuildActivity guildActivity = context.GetGuild(entry.GuildId).GuildActivities.SingleOrDefault(ga => ga.Activity.Id == entry.ActivityId);
             if (guildActivity == null)
+                return; // Activity deleted in mean time
+
+            if (guildActivity.CountdownDurationS > entry.CountdownDurationS)
+            {
+                entry.ETA = DateTime.Now + TimeSpan.FromSeconds(guildActivity.CountdownDurationS - entry.CountdownDurationS);
+                entry.CountdownDurationS = guildActivity.CountdownDurationS;
+                DoActionTask(entry);
                 return;
+            }
+
             SocketGuild guild = _discord.GetGuild((ulong)guildActivity.Guild.Id);
             if (guild == null)
-                return;
+                return; // Bot removed from guild or guild deleted
             SocketGuildUser user = guild.GetUser((ulong)entry.UserId);
             if (user == null)
-                return;
+                return; // User no longer in guild
 
             switch (guildActivity.Action)
             {
@@ -172,14 +183,18 @@ namespace QualityEnsurance.DiscordEventHandlers
                 case BotActionType.Timeout:
                     try
                     {
-                        await user.SetTimeOutAsync(TimeSpan.FromSeconds(guildActivity.TimeoutDuration));
+                        await user.SetTimeOutAsync(TimeSpan.FromSeconds(guildActivity.TimeoutDurationS));
                     }
                     catch { /* Ignore forbidden */ }
                     break;
             }
 
             if (guildActivity.ActionMessage != null)
-                await user.SendMessageAsync(guildActivity.ActionMessage);
+                try
+                {
+                    await user.SendMessageAsync(guildActivity.ActionMessage);
+                }
+                catch { /* Ignore forbidden */ }
 
             PendingActions.Remove(entry);
             entry.Dispose();

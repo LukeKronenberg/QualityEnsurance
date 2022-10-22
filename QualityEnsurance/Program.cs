@@ -18,12 +18,12 @@ namespace QualityEnsurance
         public static async Task Main(string[] args)
         {
             Configuration = new ConfigurationBuilder()
-                .AddJsonFile("./appsettings.json", false)
+                .AddJsonFile("./appsettings.json", false, true)
                 .Build();
 
             Services = new ServiceCollection()
                 .AddSingleton<IConfiguration>(Configuration)
-                .AddDbContextFactory<ApplicationContext>(options =>
+                .AddDbContextFactory<QualityEnsuranceContext>(options =>
                     {
                         options.UseNpgsql(Configuration.GetConnectionString("DB_Connection"));
                         options.UseLazyLoadingProxies();
@@ -32,6 +32,8 @@ namespace QualityEnsurance
                     })
                 .AddSingleton<DiscordSocketClient>(s => new(new DiscordSocketConfig() { 
                     GatewayIntents = 
+                        GatewayIntents.GuildMessages    |
+                        GatewayIntents.MessageContent   |
                         GatewayIntents.GuildPresences   | 
                         GatewayIntents.GuildMembers     |
                         GatewayIntents.Guilds
@@ -39,16 +41,18 @@ namespace QualityEnsurance
                 .AddSingleton<InteractionService>(s => new(s.GetRequiredService<DiscordSocketClient>()))
                 .AddSingleton<InteractionHandler>()
                 .AddSingleton<PresenceHandler>()
+                .AddSingleton<MessageHandler>()
                 .BuildServiceProvider();
-            
+
+            Services.GetRequiredService<MessageHandler>();
+            Services.GetRequiredService<PresenceHandler>();
+
             var client = Services.GetRequiredService<DiscordSocketClient>();
             client.Log += LogAsync;
 
             await Services.GetRequiredService<InteractionHandler>()
                 .InitializeAsync();
-            Services.GetRequiredService<PresenceHandler>()
-                .Initialize();
-
+            
             await client.LoginAsync(TokenType.Bot, Configuration.GetConnectionString("Bot_Secret_Token"));
             await client.StartAsync();
 
@@ -57,7 +61,7 @@ namespace QualityEnsurance
 
         private static Task LogAsync(LogMessage message)
         {
-             Console.WriteLine(message.ToString());
+            Console.WriteLine(message.ToString());
             return Task.CompletedTask;
         }
     }

@@ -20,6 +20,7 @@ using ProtoBuf;
 
 namespace VDF.Core.Utils {
 	public static class DatabaseUtils {
+		[ThreadStatic]
 		internal static HashSet<FileEntry> Database = new();
 		internal static string? CustomDatabaseFolder;
 

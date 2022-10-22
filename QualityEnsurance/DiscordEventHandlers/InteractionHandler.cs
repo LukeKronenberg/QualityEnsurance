@@ -12,15 +12,13 @@ namespace QualityEnsurance.DiscordEventHandlers
     public class InteractionHandler
     {
         private readonly DiscordSocketClient _client;
-        private readonly IDbContextFactory<ApplicationContext> _contextFactory;
         private readonly InteractionService _handler;
         private readonly IServiceProvider _services;
         private readonly IConfiguration _config;
 
-        public InteractionHandler(DiscordSocketClient client, IDbContextFactory<ApplicationContext> contextFactory, InteractionService handler, IConfiguration config, IServiceProvider services)
+        public InteractionHandler(DiscordSocketClient client, InteractionService handler, IConfiguration config, IServiceProvider services)
         {
             _client = client;
-            _contextFactory = contextFactory;
             _handler = handler;
             _services = services;
             _config = config;
@@ -36,7 +34,6 @@ namespace QualityEnsurance.DiscordEventHandlers
 
 
             await _handler.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
-            
         }
 
         private Task LogAsync(LogMessage log) { Console.WriteLine(log); return Task.CompletedTask; }
@@ -58,8 +55,9 @@ namespace QualityEnsurance.DiscordEventHandlers
                     Console.WriteLine(ex);
                 }
             }
-#endif
+#else
             await _handler.RegisterCommandsGloballyAsync(true);
+#endif
         }
 
         private async Task HandleInteraction(SocketInteraction interaction)
@@ -89,12 +87,20 @@ namespace QualityEnsurance.DiscordEventHandlers
                         break;
                     case InteractionCommandError.Exception:
                         if (result is ExecuteResult res)
+                        {
                             switch (res.Exception)
                             {
                                 case TimeoutException:
                                     Console.WriteLine($"WARNING: Reply to command timeouted. System clock needs resync");
                                     break;
                             }
+                            Console.WriteLine(res.Exception);
+                        }
+                        string text = "An unknown error occured. Please contact the developer Virus#0195.";
+                        if (context.Interaction.HasResponded)
+                            await context.Interaction.FollowupAsync(text, ephemeral: true);
+                        else
+                            await context.Interaction.RespondAsync(text, ephemeral: true);
                         break;
                 }
         } 

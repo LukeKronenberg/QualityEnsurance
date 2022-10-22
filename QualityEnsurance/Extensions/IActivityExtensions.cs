@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Discord;
+﻿using Discord;
 
 namespace QualityEnsurance.Extensions
 {
@@ -25,6 +20,7 @@ namespace QualityEnsurance.Extensions
             {
                 RichGame richGame1 => richGame1.ApplicationId == (activity2 as RichGame).ApplicationId,
                 SpotifyGame spotifyGame1 => spotifyGame1.TrackId == (activity2 as SpotifyGame).TrackId,
+                CustomStatusGame customStatusGame1 => customStatusGame1.State == (activity2 as CustomStatusGame).State,
                 _ => activity1.Name == activity2.Name,
             };
         }

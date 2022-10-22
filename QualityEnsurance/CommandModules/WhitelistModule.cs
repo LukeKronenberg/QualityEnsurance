@@ -1,16 +1,15 @@
 ﻿using Discord;
 using Discord.Interactions;
 using QualityEnsurance.Attributes;
-using QualityEnsurance.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace QualityEnsurance.CommandModules
 {
     public class WhitelistModule : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly IDbContextFactory<ApplicationContext> _contextFactory;
+        private readonly IDbContextFactory<QualityEnsuranceContext> _contextFactory;
 
-        public WhitelistModule(IDbContextFactory<ApplicationContext> contextFactory)
+        public WhitelistModule(IDbContextFactory<QualityEnsuranceContext> contextFactory)
         {
             _contextFactory = contextFactory;
         }

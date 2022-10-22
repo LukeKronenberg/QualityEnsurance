@@ -40,7 +40,7 @@ namespace QualityEnsurance.Models
         [Column("action")]
         public BotActionType Action { get; set; } = BotActionType.Timeout;
         [Column("countdown_duration")]
-        public int CountdownDuration { get; set; } = 1800;
+        public int CountdownDurationS { get; set; } = 1800;
         [Column("start_message")]
         public string StartMessage { get; set; } = string.Empty;
         [Column("action_message")]
@@ -48,7 +48,7 @@ namespace QualityEnsurance.Models
 
         // Action Configurations
         [Column("timeout_duration")]
-        public int TimeoutDuration { get; set; } = 1800;
+        public int TimeoutDurationS { get; set; } = 1800;
 
         public virtual List<GuildActivityUser> GuildActivityUserSettings { get; set; } = new(0);
 
@@ -65,9 +65,9 @@ namespace QualityEnsurance.Models
             if (Activity.SpotifyId != null)
                 embed.AddField("Spotify-Id:", $"`{Activity.SpotifyId.SanitizeCode()}`", true);
             embed.AddField("Action:", $"`{Action}`", true);
-            embed.AddField("Countdown-Duration:", $"{CountdownDuration}s", true);
+            embed.AddField("Countdown-Duration:", $"{CountdownDurationS}s", true);
             if (Action == BotActionType.Timeout)
-                embed.AddField("Timeout duration:", $"{TimeoutDuration}s", true);
+                embed.AddField("Timeout duration:", $"{TimeoutDurationS}s", true);
             embed.AddField("Start msg.:", $"{StartMessage ?? "No message"}");
             embed.AddField("Action msg.:", $"{ActionMessage ?? "No message"}");
         }
