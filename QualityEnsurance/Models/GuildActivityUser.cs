@@ -15,6 +15,7 @@ namespace QualityEnsurance.Models
         public virtual Activity Activity { get; set; }
 
         public virtual GuildActivity GuildActivity { get; set; }
+        public virtual PendingAction PendingActions { get; set; }
 
         [Column("user_id")]
         public long UserId { get; set; }

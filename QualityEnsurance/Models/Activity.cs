@@ -38,25 +38,23 @@ namespace QualityEnsurance.Models
         {
             unchecked
             {
-                switch (activity.GetType().Name)
+                switch (activity)
                 {
-                    case nameof(Game):
-                        Name = activity.Name;
-                        break;
-                    case nameof(RichGame):
-                        var richGame = (RichGame)activity;
+                    case RichGame richGame:
                         Name = richGame.Name;
                         ApplicationId = (long)richGame.ApplicationId;
                         break;
-                    case nameof(SpotifyGame):
-                        var spotifyGame = (SpotifyGame)activity;
+                    case SpotifyGame spotifyGame:
                         Name = spotifyGame.Name;
                         SpotifyId = spotifyGame.TrackId;
                         AlbumTitle = spotifyGame.AlbumTitle;
                         TrackTitle = spotifyGame.TrackTitle;
                         break;
+                    case Game game: // Mach "Game" last because other types are inhereting
+                        Name = game.Name;
+                        break;
                     default:
-                        throw new NotSupportedException($"ActivityType \"{activity.GetType().Name}\" not supported.");
+                        throw new NotSupportedException($"ActivityType \"{activity.GetType().FullName}\" not supported.");
                 }
             }
         }
@@ -85,7 +83,13 @@ namespace QualityEnsurance.Models
         {
             if (activity == null)
                 return false;
-            return activity.Name == Name && activity.ApplicationId == ApplicationId && activity.SpotifyId == SpotifyId;
+            return 
+                activity.Name == Name && 
+                activity.ApplicationId == ApplicationId && 
+                activity.State == State &&
+                activity.SpotifyId == SpotifyId &&
+                activity.AlbumTitle == AlbumTitle &&
+                activity.TrackTitle == TrackTitle;
         }
 
         public enum FilterType
@@ -96,6 +100,11 @@ namespace QualityEnsurance.Models
             ApplicationAndName,
             OnlySpotify,
             SpotifyOrName,
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
         }
     }
 }

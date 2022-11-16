@@ -9,9 +9,12 @@ namespace QualityEnsurance.Models
         [Key]
         [Column("identifier")]
         public string Identifier { get; set; }
-        
-        [Column("channel_url")]
-        public string ChannelUrl { get; set; }
+
+        [Column("user_id")]
+        public string UserId { get; set; }
+
+        [Column("description")]
+        public string Description { get; set; }
 
         [Column("access_token")]
         public string AccessToken { get; set; }
@@ -23,6 +26,6 @@ namespace QualityEnsurance.Models
         public long ExpiresInSeconds { get; set; }
 
         [Column("issued")]
-        public DateTime Issued { get; set; }
+        public DateTime IssuedUtc { get; set; }
     }
 }

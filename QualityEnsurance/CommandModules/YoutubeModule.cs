@@ -4,11 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using Google.Apis.YouTube.v3;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Auth.OAuth2.Flows;
-using Google.Apis.Auth.OAuth2.Responses;
 using Google.Apis.Services;
 using Google.Apis.YouTube.v3.Data;
 using Microsoft.Extensions.Configuration;
-using System.Reflection;
 using QualityEnsurance.Attributes;
 using QualityEnsurance.Models;
 using QualityEnsurance.Extensions;
@@ -39,18 +37,22 @@ namespace QualityEnsurance.CommandModules
             var youtubeUsers = await context.YoutubeUsers.ToListAsync();
             var embed = new EmbedBuilder()
                 .WithTitle("Youtube Identifiers")
-                .WithDescription(string.Join("\n", youtubeUsers.Select(user => $"`{user.Identifier.SanitizeCode()}` {user.ChannelUrl}")));
+                .WithDescription(
+                    string.Join("\n",
+                        youtubeUsers.Select(user => 
+                                $"`{user.Identifier.SanitizeCode()}` {user.Description}")
+                ));
             
             await FollowupAsync(embed: embed.Build(), ephemeral: true);
         }
 
-        [SlashCommand("register", "Permit the bot to access a youtube account. (Bot developer only).")]
+        [SlashCommand("register", "Permit the bot to access a youtube account. (Bot hoster only).")]
         [RequireOwner]
         public async Task Register(
-            [Summary("identifier", "A unique name for the account too be linked")]
+            [Summary("identifier", "A unique name for the account. Needs to be passed when uploading.")]
             string identifier,
-            [Summary("channel-url", "Optional channel url. Does not update by itself.")]
-            string channelUrl = null,
+            [Summary("description", "Something more to identify this youtube account.")]
+            string description = null,
             [Summary("ignore-existing", "Override an already existing identifier.")]
             bool ignoreExisting = false)
         {
@@ -87,7 +89,7 @@ namespace QualityEnsurance.CommandModules
                         YouTubeService.Scope.YoutubeForceSsl,
                         YouTubeService.Scope.Youtubepartner
                     },
-                    "QualityEnsurance",
+                    Program.UserId,
                     CancellationToken.None,
                     dataStore: new Google.Apis.Util.Store.NullDataStore());
 
@@ -95,11 +97,12 @@ namespace QualityEnsurance.CommandModules
 
             user ??= new();
             user.Identifier = identifier;
-            user.ChannelUrl = channelUrl;
+            user.Description = description;
+            user.UserId = creds.UserId;
             user.AccessToken = creds.Token.AccessToken;
             user.RefreshToken = creds.Token.RefreshToken;
             user.ExpiresInSeconds = creds.Token.ExpiresInSeconds ?? 0;
-            user.Issued = creds.Token.IssuedUtc;
+            user.IssuedUtc = creds.Token.IssuedUtc;
 
             if (isNew)
                 context.YoutubeUsers.Add(user);
@@ -118,7 +121,7 @@ namespace QualityEnsurance.CommandModules
             YoutubePublicityType publicity,
             [Summary("video-url", "The video to upload")]
             string video_url,
-            [Summary("publish-at", "Date and time when the video should be published. (YYYY-MM-DD hh:mm:ss)")]
+            [Summary("publish-at", "Date and time when the video should be published UTC+1. (YYYY-MM-DD hh:mm:ss)")]
             DateTime? publishAt = null,
             [Summary("permiere", "If the video should premiere.")]
             bool premiere = false,
@@ -153,18 +156,18 @@ namespace QualityEnsurance.CommandModules
                 return;
             }
 
-
             using HttpClient client = new();
 
             Stream stream;
             try
             {
+                await FollowupAsync($"Attempting to download video from `{video_url.SanitizeCode()}`...", ephemeral: true);
                 stream = await client.GetStreamAsync(video_url);
-                Console.WriteLine($"Download video from {video_url} successfull");
             }
             catch (Exception ex)
             {
-                await FollowupAsync($"Failed to download video. {ex.Message}", ephemeral: true);
+                await ModifyOriginalResponseAsync(msg => msg.Content = $"Failed to download video. {ex.Message}");
+                Console.WriteLine(ex);
                 return;
             }
 
@@ -186,12 +189,23 @@ namespace QualityEnsurance.CommandModules
                 }
             });
 
-            UserCredential creds = new(flow, "Quality Ensurance", new() { AccessToken = user.AccessToken, RefreshToken = user.RefreshToken });
+
+            if (user.IssuedUtc + TimeSpan.FromSeconds(user.ExpiresInSeconds) < DateTime.UtcNow ||true)
+            {
+                var accessToken = await flow.RefreshTokenAsync(user.UserId, user.RefreshToken, CancellationToken.None);
+                user.AccessToken = accessToken.AccessToken;
+                user.RefreshToken = accessToken.RefreshToken;
+                user.IssuedUtc = accessToken.IssuedUtc;
+                user.ExpiresInSeconds = accessToken.ExpiresInSeconds ?? 0;
+                await context.SaveChangesAsync();
+            }
+
+            UserCredential creds = new(flow, Program.UserId, new() { AccessToken = user.AccessToken, RefreshToken = user.RefreshToken });
 
             var youtubeService = new YouTubeService(new BaseClientService.Initializer()
             {
                 HttpClientInitializer = creds,
-                ApplicationName = "QualityEnsurance"
+                ApplicationName = Program.UserId
             });
 
             Video video = new()
@@ -201,13 +215,14 @@ namespace QualityEnsurance.CommandModules
                     Title = title,
                     Description = description,
                     LiveBroadcastContent = premiere? "upcoming" : "none",
-                    PublishedAt = publishAt
+                    PublishedAt = publishAt,
                 },
                 Status = new()
                 {
                     PrivacyStatus = publicity.ToString().ToLower(),
                     PublishAt = publishAt,
-                    MadeForKids = madeForKids
+                    MadeForKids = madeForKids,
+                    SelfDeclaredMadeForKids = madeForKids
                 },
             };
             
@@ -219,6 +234,7 @@ namespace QualityEnsurance.CommandModules
                     case Google.Apis.Upload.UploadStatus.NotStarted:
                         break;
                     case Google.Apis.Upload.UploadStatus.Starting:
+                        await ModifyOriginalResponseAsync(msg => msg.Content = $"Starting upload...");
                         break;
                     case Google.Apis.Upload.UploadStatus.Uploading:
                         await ModifyOriginalResponseAsync(msg => msg.Content = $"Uploading ... {progress.BytesSent}/{stream.Length} ({progress.BytesSent / stream.Length * 100}%)");
@@ -226,7 +242,8 @@ namespace QualityEnsurance.CommandModules
                     case Google.Apis.Upload.UploadStatus.Completed:
                         break;
                     case Google.Apis.Upload.UploadStatus.Failed:
-                        await ModifyOriginalResponseAsync(msg => msg.Content = $"Upload failed. {progress.Exception}");
+                        Console.WriteLine(progress.Exception);
+                        await ModifyOriginalResponseAsync(msg => msg.Content = $"Upload failed. {progress.Exception.Message}");
                         break;
                     default:
                         break;
@@ -239,11 +256,10 @@ namespace QualityEnsurance.CommandModules
             };
 
             await videoInsertRequest.UploadAsync();
-
             stream.Dispose();
         }
 
-        [SlashCommand("list", "List queued videos for a channel.")]
+        [SlashCommand("list", "List all or filtered videos for a channel.")]
         public async Task List(
             [Summary("identifier", "Identifier of the channel.")]
             string identifier,
@@ -286,12 +302,22 @@ namespace QualityEnsurance.CommandModules
                 }
             });
 
-            UserCredential creds = new(flow, "Quality Ensurance", new() { AccessToken = user.AccessToken, RefreshToken = user.RefreshToken });
+            if (user.IssuedUtc + TimeSpan.FromSeconds(user.ExpiresInSeconds) < DateTime.UtcNow)
+            {
+                var accessToken = await flow.RefreshTokenAsync(user.UserId, user.RefreshToken, CancellationToken.None);
+                user.AccessToken = accessToken.AccessToken;
+                user.RefreshToken = accessToken.RefreshToken;
+                user.IssuedUtc = accessToken.IssuedUtc;
+                user.ExpiresInSeconds = accessToken.ExpiresInSeconds ?? 0;
+                await context.SaveChangesAsync();
+            }
+
+            UserCredential creds = new(flow, Program.UserId, new() { AccessToken = user.AccessToken, RefreshToken = user.RefreshToken });
 
             using var youtubeService = new YouTubeService(new BaseClientService.Initializer()
             {
                 HttpClientInitializer = creds,
-                ApplicationName = "QualityEnsurance"
+                ApplicationName = Program.UserId
             });
 
             var channelsListRequest = youtubeService.Channels.List("contentDetails");
@@ -360,7 +386,7 @@ namespace QualityEnsurance.CommandModules
                 embeds.Add(builder.Build());
             }
 
-            foreach (var embedChunk in embeds.Chunk(e => e.Title.Length + e.Fields.Sum(f => f.Name.Length + f.Value.Length), 6000))
+            foreach (var embedChunk in embeds.Chunk(e => e.Title.Length + e.Fields.Sum(f => f.Name.Length + f.Value.Length), 6000, 10))
                 await FollowupAsync(embeds: embedChunk, ephemeral: true);
         }
 

@@ -7,6 +7,7 @@ using QualityEnsurance.DiscordEventHandlers;
 using Discord.Interactions;
 using System.Diagnostics;
 using System.ServiceProcess;
+using System.Text;
 
 namespace QualityEnsurance
 {
@@ -15,8 +16,12 @@ namespace QualityEnsurance
         public static IConfigurationRoot Configuration { get; set; }
         public static IServiceProvider Services { get; set; }
 
+        public const string UserId = "QualityEnsurance";
+
         public static async Task Main(string[] args)
         {
+            AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+            
             Configuration = new ConfigurationBuilder()
                 .AddJsonFile("./appsettings.json", false, true)
                 .Build();
@@ -44,8 +49,8 @@ namespace QualityEnsurance
                 .AddSingleton<MessageHandler>()
                 .BuildServiceProvider();
 
-            Services.GetRequiredService<MessageHandler>();
-            Services.GetRequiredService<PresenceHandler>();
+            Services.GetRequiredService<MessageHandler>().Initialize();
+            await Services.GetRequiredService<PresenceHandler>().InitializeAsync();
 
             var client = Services.GetRequiredService<DiscordSocketClient>();
             client.Log += LogAsync;
@@ -59,9 +64,19 @@ namespace QualityEnsurance
             await Task.Delay(Timeout.Infinite);
         }
 
-        private static Task LogAsync(LogMessage message)
+        public static Task LogAsync(LogMessage log)
         {
-            Console.WriteLine(message.ToString());
+            return LogAsync(log.ToString(prependTimestamp: false));
+        }
+
+        public static Task LogAsync(object obj) => LogAsync(obj.ToString());
+
+        public static Task LogAsync(string message)
+        {
+            StringBuilder builder = new();
+            builder.Append($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ");
+            builder.Append(message);
+            Console.WriteLine(builder.ToString());
             return Task.CompletedTask;
         }
     }

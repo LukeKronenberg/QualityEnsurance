@@ -51,25 +51,32 @@ namespace QualityEnsurance.Models
         public int TimeoutDurationS { get; set; } = 1800;
 
         public virtual List<GuildActivityUser> GuildActivityUserSettings { get; set; } = new(0);
+        public virtual List<PendingAction> PendingActions { get; set; } = new(0);
 
 
-        public void AddToEmbed(EmbedBuilder embed)
+        public void AddToEmbed(EmbedBuilder embed, GuildActivity oldValues = null)
         {
-            embed.AddField("Id:", $"`{IdWithinGuild}`", true);
+            embed.AddOption("Id:", IdWithinGuild, oldValues?.IdWithinGuild, doCodeFormatting: false);
             if (Activity.Name != null)
-                embed.AddField("Name:", $"`{Activity.Name.SanitizeCode()}`", true);
+                embed.AddOption("Name:", Activity.Name);
             if (Activity.State != null)
-                embed.AddField("State:", $"`{Activity.State.SanitizeCode()}`", true);
+                embed.AddOption("State:", Activity.State);
             if (Activity.ApplicationId.HasValue)
-                embed.AddField("App-Id:", $"`{Activity.ApplicationId}`", true);
+                embed.AddOption("App-Idd:", Activity.ApplicationId.Value);
             if (Activity.SpotifyId != null)
-                embed.AddField("Spotify-Id:", $"`{Activity.SpotifyId.SanitizeCode()}`", true);
-            embed.AddField("Action:", $"`{Action}`", true);
-            embed.AddField("Countdown-Duration:", $"{CountdownDurationS}s", true);
+                embed.AddOption("Spotify-Id:", Activity.SpotifyId);
+            embed.AddOption("Action:", Action, oldValues?.Action);
+            embed.AddOption("Countdown-Duration:", $"{CountdownDurationS}s", oldValues != null? $"{oldValues.CountdownDurationS}s" : null, doCodeFormatting: false);
             if (Action == BotActionType.Timeout)
-                embed.AddField("Timeout duration:", $"{TimeoutDurationS}s", true);
-            embed.AddField("Start msg.:", $"{StartMessage ?? "No message"}");
-            embed.AddField("Action msg.:", $"{ActionMessage ?? "No message"}");
+                embed.AddOption("Timeout-Duration:", $"{TimeoutDurationS}s", oldValues != null ? $"{oldValues.TimeoutDurationS}s" : null, doCodeFormatting: false);
+            embed.AddOption("Start msg.:", StartMessage ?? "No message", oldValues != null ? (oldValues.StartMessage ?? "No message") : null, doCodeFormatting: false);
+            embed.AddOption("Action msg.:", ActionMessage ?? "No message", oldValues != null ? (oldValues.ActionMessage ?? "No message") : null, doCodeFormatting: false);
+            embed.AddOption("Require Whitelist:", RequireWhitelist);
+        }
+
+        public GuildActivity ShallowCopy()
+        {
+            return (GuildActivity) MemberwiseClone();
         }
     }
 }

@@ -1,5 +1,7 @@
 ﻿using Discord;
 using Discord.Interactions;
+using Microsoft.Extensions.Configuration;
+using QualityEnsurance.Extensions;
 
 namespace QualityEnsurance.Attributes
 {
@@ -14,6 +16,13 @@ namespace QualityEnsurance.Attributes
 
         public override async Task<PreconditionResult> CheckRequirementsAsync(IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
         {
+            IConfiguration config = (IConfiguration)services.GetService(typeof(IConfiguration));
+
+            long[] whitelistedOwners = config.GetArray<long>("whitelistedOwners");
+
+            if (Array.IndexOf(whitelistedOwners, context.User.Id) != -1)
+                return PreconditionResult.FromSuccess();
+
             if (context.Client.TokenType == TokenType.Bot)
             {
                 IApplication application = await context.Client.GetApplicationInfoAsync();

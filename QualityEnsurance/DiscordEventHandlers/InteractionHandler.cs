@@ -30,13 +30,11 @@ namespace QualityEnsurance.DiscordEventHandlers
             _client.InteractionCreated += HandleInteraction;
             _handler.SlashCommandExecuted += CommandExecuted;
 
-            _handler.Log += LogAsync;
+            _handler.Log += Program.LogAsync;
 
 
             await _handler.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
         }
-
-        private Task LogAsync(LogMessage log) { Console.WriteLine(log); return Task.CompletedTask; }
 
         private async Task ReadyAsync()
         {
@@ -47,7 +45,6 @@ namespace QualityEnsurance.DiscordEventHandlers
                 {
                     await _handler.RegisterCommandsToGuildAsync(guildId, true);
                     Console.WriteLine($"Registered commands to test guild with id \"{guildId}\"");
-                    break;
                 }
                 catch (Exception ex)
                 {

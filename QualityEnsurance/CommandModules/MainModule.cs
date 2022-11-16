@@ -1,23 +1,27 @@
 ﻿using Discord;
 using static QualityEnsurance.Constants.Constants;
-using static QualityEnsurance.Constants.Commands;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Discord.Interactions;
 using VDF.Core;
 using System.Text.RegularExpressions;
 using QualityEnsurance.Extensions;
 using QualityEnsurance.DiscordEventHandlers;
 using QualityEnsurance.Attributes;
+using QualityEnsurance.Models;
 
 namespace QualityEnsurance.CommandModules
 {
     public class MainModule : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly IDbContextFactory<QualityEnsuranceContext> _contextFactory;
-        public MainModule(IDbContextFactory<QualityEnsuranceContext> contextFactory)
+        private readonly IConfiguration _config;
+            
+        public MainModule(IDbContextFactory<QualityEnsuranceContext> contextFactory, IConfiguration config)
         {
             _contextFactory = contextFactory;
+            _config = config;
         }
 
         [SlashCommand("ping", "pong!")]
@@ -31,19 +35,19 @@ namespace QualityEnsurance.CommandModules
         {
             if (commandName == null)
             {
-                IEnumerable<Command> unsafeCommands = GetCommands();
+                IEnumerable<Command> commands = _config.GetCommands();
 
                 EmbedBuilder titleBuilder = new EmbedBuilder().WithTitle("**__Quality Ensurance__** Bot");
                 EmbedFieldBuilder titleField = new EmbedFieldBuilder()
                     .WithName("Help")
-                    .WithValue($"Use `{Help.Name}` + `command name` to get more information for a command.");
+                    .WithValue($"Use /`help` `command name` to get more information for a command.");
                 titleBuilder.AddField(titleField);
                 await RespondAsync(embed: titleBuilder.Build(), ephemeral: true);
 
 
                 int index = 0;
                 // Separete into chunks of 25 to not overwflow maximum EmbedFields of 25
-                foreach (var chunckedCommands in unsafeCommands.Chunk(25))
+                foreach (var chunckedCommands in commands.Chunk(cmd => cmd.Name.Length + cmd.DescriptionBasic.Length, 6000, 25))
                 {
                     EmbedBuilder builder = new();
                     if (index == 0)
@@ -53,12 +57,12 @@ namespace QualityEnsurance.CommandModules
                     {
                         index++;
                         var commandBuilder = new EmbedFieldBuilder()
-                            .WithName($"> **{c.Name}**")
+                            .WithName($"**/{c.Name}**")
                             .WithValue($"{c.DescriptionBasic}");
 
                         builder.AddField(commandBuilder);
                     }
-                    if (index == unsafeCommands.Count())
+                    if (index == commands.Count())
                         builder.WithCurrentTimestamp();
 
                     await FollowupAsync(embed: builder.Build(), ephemeral: true);
@@ -66,22 +70,20 @@ namespace QualityEnsurance.CommandModules
             } 
             else
             {
-                Command command = GetCommands().SingleOrDefault(c => c.Name.ToLower() == commandName.ToLower());
+                Command command = _config.GetCommands().SingleOrDefault(c => c.Name.ToLower() == commandName.ToLower());
                 if (command == null)
                 {
                     await RespondAsync($"{Context.User.Mention} `{commandName?.SanitizeCode()}` is not a valid command!");
                     return;
                 }
 
-                var embedBuilder = new EmbedBuilder().WithTitle($"**{command.Name}**");
-                var descriptionFullField = new EmbedFieldBuilder()
-                    .WithName("> __Description__:")
-                    .WithValue($"> {command.DescriptionFull}");
-                embedBuilder.AddField(descriptionFullField);
+                var embedBuilder = new EmbedBuilder()
+                    .WithTitle($"**/{command.Name}**")
+                    .WithDescription($"> {command.DescriptionFull}");
 
                 var parmeterCommandField = new EmbedFieldBuilder()
                     .WithName("__**Parameters**__:")
-                    .WithValue($"(`name-of-param`: `type-of-param`)");
+                    .WithValue($"(`parameter-name`: `parameter-type`)");
                 embedBuilder.AddField(parmeterCommandField);
 
                 foreach (var syntax in command.Syntaxes)
@@ -90,14 +92,14 @@ namespace QualityEnsurance.CommandModules
                     if (syntax.Description != null)
                         syntaxBuilder.WithName($"*{syntax.Description}*");
                     else
-                        syntaxBuilder.WithName("_ _");
+                        syntaxBuilder.WithName("*No description*");
                     if (syntax.Parameters.Any())
                     {
                         StringBuilder paramBuilder = new();
                         foreach (var param in syntax.Parameters)
                         {
                             paramBuilder.Append(
-                                $"**`{param.Name}`**: `{param.Type}`{(param.Description != null? $"\n> {param.Description}":null)}\n\n"
+                                $"**`{param.Name}`**: `{param.Type}`{(param.Description != null? $" {param.Description}":null)}\n"
                             );
                         }
                         syntaxBuilder.Value = paramBuilder.ToString();
@@ -113,6 +115,7 @@ namespace QualityEnsurance.CommandModules
 
         [SlashCommand("purge", "Delete a set amount of recent messages in a channel.")]
         [RequireUserPermission(GuildPermission.Administrator)]
+        [RequireBotPermission(GuildPermission.ManageMessages)]
         public async Task Purge(int amount)
         {
             await DeferAsync(ephemeral: true);
@@ -132,6 +135,31 @@ namespace QualityEnsurance.CommandModules
             {
                 await FollowupAsync("Can only delete messages which are newer than 2 weeks! sorry", ephemeral: true);
             }
+        }
+
+        [SlashCommand("channel-settings", "Change channel configuration.")]
+        [RequireUserPermissionOrOwner(GuildPermission.Administrator)]
+        public async Task ChannelSettings(
+            [Summary("upload-links", "Reuploads any image or video link posted and removes the original message.")]
+            bool? newUploadLinks = null)
+        {
+            if (Context.Channel is not IGuildChannel discordChannel)
+                return;
+
+            using var context = _contextFactory.CreateDbContext();
+
+            var channel = context.Get<Channel>((long)discordChannel.Id);
+
+            EmbedBuilder builder = new();
+            builder.WithTitle("Channel Settings");
+            builder.AddOption("Upload link", channel.UploadLinks, newUploadLinks);
+
+            if (newUploadLinks.HasValue)
+                channel.UploadLinks = newUploadLinks.Value;
+
+            context.SaveChanges();
+
+            await RespondAsync(embed: builder.Build(), ephemeral: true);
         }
     }
 
@@ -320,43 +348,12 @@ namespace QualityEnsurance.CommandModules
         [SlashCommand("pending-action-amount", "Gets the number of actions pending for execution.")]
         public async Task PendingActionAmount()
         {
-            await RespondAsync($"**Amount**: {_presenceHandler.PendingActions.Count}", ephemeral: true);
-        }
+            await DeferAsync(ephemeral: true);
 
-        [SlashCommand("channel-settings", "Change channel configuration.")]
-        public async Task ChannelSettings(
-            [Summary("upload-link", "Reuploads any image or video link posted and removes the original message.")]
-            bool? uploadLink = null)
-        {
-            if (Context.Channel is not IGuildChannel discordChannel)
-                return;
+            var context = _contextFactory.CreateDbContext();
 
-            using var context = _contextFactory.CreateDbContext();
-
-            var channel = context.GetChannel((long)discordChannel.Id);
-
-            EmbedBuilder builder = new();
-            builder.WithTitle("Channel Settings");
-
-            string GetStatus(bool oldValue, bool? newValue)
-            {
-                StringBuilder sBuilder = new();
-                sBuilder.Append(oldValue ? "`Enabled`" : "`Disabled`");
-                if (newValue.HasValue)
-                    sBuilder.Append($" => {(newValue.Value ? "`Enabled`" : "`Disabled`")}");
-                return sBuilder.ToString();
-            }
-
-            builder.WithFields(new EmbedFieldBuilder()
-                .WithName("Upload link")
-                .WithValue(GetStatus(channel.UploadLink, uploadLink)));
-
-            if (uploadLink.HasValue)
-                channel.UploadLink = uploadLink.Value;
-
-            context.SaveChanges();
-
-            await RespondAsync(embed: builder.Build(), ephemeral: true);
+            var pendingActions = await context.PendingActions.CountAsync();
+            await FollowupAsync($"**In memory actions**: {_presenceHandler.Actions.Count}\n**In database actions**: {pendingActions}", ephemeral: true);
         }
     }
 }

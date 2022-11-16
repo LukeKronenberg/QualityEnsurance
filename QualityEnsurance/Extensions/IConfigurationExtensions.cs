@@ -8,5 +8,15 @@ namespace QualityEnsurance.Extensions
         {
             return config.GetSection(key).Get<TElement[]>();
         }
+
+        public static ulong[] GetBotOwners(this IConfiguration config)
+        {
+            return config.GetArray<ulong>("whitelistedOwners");
+        }
+
+        public static Command[] GetCommands(this IConfiguration config)
+        {
+            return config.GetArray<Command>("Commands");
+        }
     }
 }

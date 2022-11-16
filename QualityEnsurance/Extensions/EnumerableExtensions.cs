@@ -1,9 +1,5 @@
-﻿using QualityEnsurance.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using QualityEnsurance;
+using QualityEnsurance.Models;
 using Discord;
 
 namespace QualityEnsurance.Extensions
@@ -24,17 +20,27 @@ namespace QualityEnsurance.Extensions
         public static IOrderedEnumerable<GuildActivity> OrderByName(this IEnumerable<GuildActivity> guildActivities) =>
             guildActivities.OrderBy(a => a.Activity.ApplicationId?.ToString() ?? a.Activity.SpotifyId ?? a.Activity.Name );
 
-        public static IEnumerable<T[]> Chunk<T>(this IEnumerable<T> source, Func<T, int> sizeConverter, int maxSize)
+        /// <summary>
+        /// Converts a Enumerable into multiple chunks based on an converter function to calculate a size for each element.
+        /// </summary>
+        /// <typeparam name="TElement"></typeparam>
+        /// <param name="source"></param>
+        /// <param name="elementToSize"></param>
+        /// <param name="maxChunkSize"></param>
+        /// <param name="maxChunkLength"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentException">Throws if an elements size is larger than <paramref name="maxChunkSize"/></exception>
+        public static IEnumerable<TElement[]> Chunk<TElement>(this IEnumerable<TElement> source, Func<TElement, double> elementToSize, double maxChunkSize, int maxChunkLength = -1)
         {
-            List<T> lastElements = new();
-            int lastSizesSum = 0;
+            List<TElement> lastElements = new();
+            double lastSizesSum = 0;
             foreach (var element in source)
             {
-                int len = sizeConverter(element);
-                if (len > maxSize)
+                double len = elementToSize(element);
+                if (len > maxChunkSize)
                     throw new ArgumentException("Size of element is greater than maxSize");
 
-                if (lastSizesSum + len > maxSize)
+                if (lastSizesSum + len > maxChunkSize || lastElements.Count == maxChunkLength)
                 {
                     yield return lastElements.ToArray();
                     lastElements.Clear();

@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
+using QualityEnsurance.Models;
 
 namespace QualityEnsurance.DiscordEventHandlers
 {
@@ -20,7 +21,7 @@ namespace QualityEnsurance.DiscordEventHandlers
         private Task JoinedGuild(SocketGuild joinedGuild)
         {
             using var context = _contextFactory.CreateDbContext();
-            context.GetGuild((long)joinedGuild.Id, true);
+            context.Get<Guild>((long)joinedGuild.Id);
             context.SaveChanges();
             return Task.CompletedTask;
         }

@@ -7,7 +7,7 @@ namespace QualityEnsurance.Models
     [Table("channel")]
     public class Channel : DbModel
     {
-        [Column("upload_link")]
-        public bool UploadLink { get; set; } = false;
+        [Column("upload_links")]
+        public bool UploadLinks { get; set; } = false;
     }
 }

@@ -14,6 +14,8 @@ namespace QualityEnsurance
         public DbSet<YoutubeUser> YoutubeUsers { get; set; }
         public DbSet<Channel> Channels { get; set; }
 
+        public DbSet<PendingAction> PendingActions { get; set; }
+
         public QualityEnsuranceContext(DbContextOptions options) : base(options)
         {
 
@@ -21,45 +23,56 @@ namespace QualityEnsurance
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<GuildActivity>().HasKey(ga => new { ga.GuildId, ga.ActivityId });
+            modelBuilder
+                .Entity<GuildActivity>()
+                .HasKey(ga => new { ga.GuildId, ga.ActivityId });
+            
             var gauEntity = modelBuilder.Entity<GuildActivityUser>();
             gauEntity.HasKey(gau => new { gau.GuildId, gau.ActivityId, gau.UserId });
-            gauEntity.HasOne(gau => gau.GuildActivity).WithMany(ga => ga.GuildActivityUserSettings).HasForeignKey(gau => new { gau.GuildId, gau.ActivityId });
+            gauEntity
+                .HasOne(gau => gau.GuildActivity)
+                .WithMany(ga => ga.GuildActivityUserSettings)
+                .HasForeignKey(gau => new { gau.GuildId, gau.ActivityId });
+
+            var qaEntity = modelBuilder
+                .Entity<PendingAction>();
+            qaEntity.HasKey(qa => new { qa.GuildId, qa.UserId, qa.ActivityId });
+            qaEntity
+                .HasOne(qa => qa.GuildActivityUser)
+                .WithOne(gau => gau.PendingActions)
+                .HasForeignKey<PendingAction>(qa => new { qa.GuildId, qa.UserId, qa.ActivityId });
+            qaEntity
+                .HasOne(qa => qa.GuildActivity)
+                .WithMany(ga => ga.PendingActions)
+                .HasForeignKey(qa => new { qa.GuildId, qa.ActivityId });
+        }
+        
+        public TElement Get<TElement>(long id) where TElement : DbModel, new()
+        {
+            TElement element = Set<TElement>().FirstOrDefault(e => e.Id == id);
+            if (element == null)
+            {
+                element = new TElement() { Id = id };
+                Add(element);
+            }
+            return element;
+        }
+    }
+
+    public static class QualityEnsuranceContextExtensions
+    {
+        public static TElement Get<TElement>(this IQueryable<TElement> elements, DbContext context, long id, bool createNew = true) where TElement : DbModel, new()
+        {
+            TElement element = elements.FirstOrDefault(e => e.Id == id);
+            if (element == null && createNew)
+            {
+                element = new TElement() { Id = id };
+                context.Add(element);
+            }
+            return element;
         }
 
-        public Channel GetChannel(long channelId)
-        {
-            Channel channel = Channels.Find(channelId);
-            if (channel == null)
-            {
-                channel = new Channel() { Id = channelId };
-                Channels.Add(channel);
-            }
-            return channel;
-        }
-
-        public User GetUser(long userId)
-        {
-            User user = Users.Find(userId);
-            if (user == null)
-            {
-                user = new User() { Id = userId };
-                Users.Add(user);
-            }
-            return user;
-        }
-
-        public Guild GetGuild(long guildId, bool createNew = true)
-        {
-            Guild guild = Guilds.Find(guildId);
-            if (guild == null && createNew)
-            {
-                guild = new Guild() { Id = guildId };
-                Guilds.Add(guild);
-            }
-            return guild;
-        }
-        public GuildActivityUser GetGuildActivityUser(GuildActivity guildActivity, User user, bool createNew = true)
+        public static GuildActivityUser GetGuildActivityUser(this QualityEnsuranceContext context, GuildActivity guildActivity, User user, bool createNew = true)
         {
             GuildActivityUser gau = guildActivity.GuildActivityUserSettings.FirstOrDefault(gau => gau.User == user);
             if (gau == null && createNew)
@@ -74,12 +87,12 @@ namespace QualityEnsurance
                     UserId = user.Id,
                 };
                 guildActivity.GuildActivityUserSettings.Add(gau);
-                GuildActivityUserSettings.Add(gau);
+                context.GuildActivityUserSettings.Add(gau);
             }
             return gau;
         }
 
-        public GuildActivityUser GetGuildActivityUser(GuildActivity guildActivity, long userId, bool createNew = true)
+        public static GuildActivityUser GetGuildActivityUser(this QualityEnsuranceContext context, GuildActivity guildActivity, long userId, bool createNew = true)
         {
             GuildActivityUser gau = guildActivity.GuildActivityUserSettings.FirstOrDefault(gau => gau.UserId == userId);
             if (gau == null && createNew)
@@ -93,18 +106,18 @@ namespace QualityEnsurance
                     UserId = userId
                 };
                 guildActivity.GuildActivityUserSettings.Add(gau);
-                GuildActivityUserSettings.Add(gau);
+                context.GuildActivityUserSettings.Add(gau);
             }
             return gau;
         }
 
-        public GuildActivityUser GetGuildActivityUser(long guildId, long activityId, long userId, bool createNew = true)
+        public static GuildActivityUser GetGuildActivityUser(this QualityEnsuranceContext context, long guildId, long activityId, long userId, bool createNew = true)
         {
-            GuildActivityUser gau = GuildActivityUserSettings.Find(guildId, activityId, userId);
+            GuildActivityUser gau = context.GuildActivityUserSettings.Find(guildId, activityId, userId);
             if (gau == null && createNew)
             {
                 gau = new GuildActivityUser() { GuildId = guildId, ActivityId = activityId, UserId = userId };
-                GuildActivityUserSettings.Add(gau);
+                context.GuildActivityUserSettings.Add(gau);
             }
             return gau;
         }

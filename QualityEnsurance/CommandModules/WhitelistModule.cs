@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Interactions;
 using QualityEnsurance.Attributes;
+using QualityEnsurance.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace QualityEnsurance.CommandModules
@@ -32,7 +33,7 @@ namespace QualityEnsurance.CommandModules
             long guildId = (long)Context.Guild.Id;
 
             using var context = _contextFactory.CreateDbContext();
-            var guild = context.GetGuild(guildId);
+            var guild = context.Get<Guild>(guildId);
             var guildActivity = guild.GuildActivities.FirstOrDefault(ga => ga.IdWithinGuild == id);
 
             if (guildActivity == null)
@@ -64,7 +65,7 @@ namespace QualityEnsurance.CommandModules
                 }
                 else
                 {
-                    var guildActivityUser = context.GetGuildActivityUser(guildActivity, context.GetUser((long)user.Id));
+                    var guildActivityUser = context.GetGuildActivityUser(guildActivity, context.Get<User>((long)user.Id));
                     if (guildActivityUser.Whitelisted == value)
                     {
                         if (value.Value)
@@ -94,8 +95,8 @@ namespace QualityEnsurance.CommandModules
                 } 
                 else
                 {
-                    var guildActivityUser = context.GetGuildActivityUser(guildActivity, context.GetUser((long)user.Id));
-                    if (guildActivityUser.Whitelisted)
+                    var guildActivityUser = guildActivity.GuildActivityUserSettings.FirstOrDefault(gaus => gaus.UserId == (long)user.Id); 
+                    if (guildActivityUser?.Whitelisted == true)
                         await FollowupAsync($"{user.Mention} is whitelisted.", ephemeral: true);
                     else
                         await FollowupAsync($"{user.Mention} is not whitelisted.", ephemeral: true);
